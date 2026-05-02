@@ -1,0 +1,824 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dijital Kitap - Kusursuz Zamanlama ve Ses Finali</title>
+
+<style>
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: black;
+  font-family: sans-serif;
+}
+
+/* =========================================
+   🌑 FİNAL GEÇİŞ EKRANI (KARARMA EFEKTİ)
+   ========================================= */
+#fadeToBlack {
+  position: fixed; inset: 0; width: 100vw; height: 100vh;
+  background: black; opacity: 0; pointer-events: none;
+  z-index: 50000; transition: opacity 1.5s ease-in-out;
+}
+.fade-active {
+  opacity: 1 !important; 
+  pointer-events: auto !important;
+}
+
+/* =========================================
+   📕 KİTAP KAPAK EKRANI
+   ========================================= */
+#coverPage {
+  position: fixed; inset: 0; width: 100vw; height: 100vh;
+  z-index: 30000; background: black; transition: opacity 1.0s ease-out; 
+}
+#coverImage { width: 100%; height: 100%; object-fit: cover; }
+#startTrigger { position: absolute; top: 27%; left: 50%; width: 48%; height: 39%; z-index: 30001; cursor: pointer; background: transparent; }
+
+/* 🏗️ ANA SAHNE */
+.scene {
+  position: fixed; inset: 0; width: 100vw; height: 100vh;
+  transform-origin: 50% 40%; transition: transform 1.5s cubic-bezier(0.4, 0, 0.2, 1); z-index: 10;
+}
+
+/* Arka Plan Videoları */
+.bg-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; background: black; display: block; opacity: 0; pointer-events: none; transition: opacity 0.5s ease; }
+#video1 { z-index: 1; opacity: 1; }
+#video3 { z-index: 5; }
+#video11 { z-index: 8; }
+
+.overlay { position: absolute; inset: 0; z-index: 60; pointer-events: none; }
+
+/* 🎯 İÇ TIKLAMA ALANLARI */
+#toggleTrigger { position: absolute; top: 27%; left: 2%; width: 48%; height: 39%; z-index: 50; cursor: pointer; background: transparent; border-radius: 6px; pointer-events: auto; }
+#rightTrigger { position: absolute; top: 27%; left: 50%; width: 48%; height: 39%; z-index: 50; cursor: pointer; background: transparent; border-radius: 6px; pointer-events: auto; }
+
+/* ✨ PARLAMA EFEKTİ */
+.active-glow { box-shadow: 0 0 40px rgba(255, 220, 0, 0.6), inset 0 0 40px rgba(255, 220, 0, 0.4); animation: glow-pulse 2s infinite ease-in-out; }
+@keyframes glow-pulse {
+  0% { box-shadow: 0 0 20px rgba(255, 220, 0, 0.3), inset 0 0 20px rgba(255, 220, 0, 0.2); }
+  50% { box-shadow: 0 0 60px rgba(255, 220, 0, 0.8), inset 0 0 50px rgba(255, 220, 0, 0.5); }
+  100% { box-shadow: 0 0 20px rgba(255, 220, 0, 0.3), inset 0 0 20px rgba(255, 220, 0, 0.2); }
+}
+.zoom-active { transform: scale(2.0); }
+
+/* 🔒 KİLİT SİSTEMİ VE VİDEO KUTULARI */
+.frame-style {
+  position: absolute; width: 18%; aspect-ratio: 4 / 5; border: 6px solid #ffffff; 
+  box-shadow: 0 5px 15px rgba(0,0,0,0.5); display: none; opacity: 0; transition: opacity 0.5s ease;
+  z-index: 20000 !important; pointer-events: auto !important; background: black; overflow: hidden;
+  transform-style: preserve-3d; backface-visibility: hidden; cursor: pointer;
+}
+
+/* Videolar her zaman izlenebileceği için kilitleri gizledik */
+.video-cover {
+  display: none !important;
+}
+
+.lock-icon { font-size: 40px; filter: drop-shadow(0 0 10px rgba(0,0,0,0.8)); transition: transform 0.3s ease; }
+.frame-style:hover .lock-icon { transform: scale(1.2); }
+.unlocked .video-cover { opacity: 0; pointer-events: none; transform: scale(1.1); }
+
+/* =========================================
+   📜 METİN KUTULARI VE YENİ SES-METİN SENKRONU
+   ========================================= */
+.text-box {
+  position: absolute; width: 22%; color: #000000; font-size: 1.15vw; line-height: 1.4;
+  background: transparent; padding: 8px; display: none; opacity: 0;
+  transition: opacity 0.5s ease; z-index: 15000; text-shadow: 1px 1px 2px rgba(255, 255, 255, 0.3);
+  transform-style: preserve-3d; backface-visibility: hidden; overflow: hidden; 
+  padding-bottom: 45px; 
+  pointer-events: none; 
+  user-select: none; 
+  -webkit-user-select: none;
+}
+
+.title-container { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.title-container b { font-size: 1.6vw; }
+
+/* 🔥 YENİ: KELİME KELİME ALTIN RENGİ PARLAMA EFEKTİ */
+.single-word {
+  display: inline-block; 
+  transition: color 0.15s ease, transform 0.15s ease, text-shadow 0.15s ease; 
+}
+
+.word-glow {
+  color: #FFD700 !important; /* Altın Sarısı */
+  text-shadow: 0 0 10px rgba(255, 215, 0, 0.9), 0 0 20px rgba(255, 215, 0, 0.5) !important;
+  transform: scale(1.15); 
+  font-weight: bold;
+}
+
+/* KONUMLAR */
+.pos-left-top { top: 28%; left: 3.5%; } .pos-left-bottom { top: 50%; left: 26.5%; }
+.pos-right-top { top: 28%; left: 52%; } .pos-right-bottom { top: 50%; left: 77%; }
+
+/* METİN KONUMLARI */
+.text-left-top { top: 28%; left: 24.5%; } .text-left-bottom { top: 50%; left: 1%; }   
+.text-right-top { top: 28%; left: 73.5%; } .text-right-bottom { top: 50%; left: 50%; } 
+
+/* 🔜 İLERİ BUTONU */
+.control-btn {
+  position: fixed; top: 50%; right: 30px; transform: translateY(-50%); z-index: 25000;
+  width: 70px; height: 70px; background: rgba(255, 255, 255, 0.1); border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 50%; color: white; font-size: 32px; cursor: pointer; display: flex; align-items: center; justify-content: center; opacity: 0; pointer-events: none; 
+  transition: all 0.5s ease; backdrop-filter: blur(5px);
+}
+.control-btn:hover { background: rgba(255, 255, 255, 0.25); transform: scale(1.1) translateY(-50%); }
+
+/* YARDIMCI SINIFLAR */
+.scene-on-top { z-index: 200 !important; } .hide-book-bg { opacity: 0 !important; }
+.show-content { display: block !important; } .show-btn { opacity: 1 !important; pointer-events: auto !important; }
+.persist-on-top { z-index: 300 !important; display: block !important; } .z-high { z-index: 60 !important; } .reveal { opacity: 1 !important; } 
+
+/* =========================================
+   🚀 KUSURSUZ CSS ZAMANLAMALARI
+   ========================================= */
+.page-turn-effect {
+  transform-origin: -20% 50% !important; 
+  transition: all 0.8s ease-in-out !important; 
+  transform: perspective(1000px) rotateY(-120deg) !important; 
+  opacity: 0 !important;
+}
+
+#videoContainer3.page-turn-effect, #videoContainer4.page-turn-effect,
+#text3.page-turn-effect, #text4.page-turn-effect,
+#videoContainer14.page-turn-effect, #videoContainer16.page-turn-effect,
+#text14.page-turn-effect, #text16.page-turn-effect { 
+  transition-duration: 1.5s !important; 
+}
+
+/* 🔥 GÜNCELLENDİ: SAYFA 2 SAĞ TARAF SAYFA ÇEVİRME HIZI (Çok az yavaşlatıldı: 0.8s -> 1.0s) */
+#videoContainer9.page-turn-effect, #videoContainer10.page-turn-effect,
+#text9.page-turn-effect, #text10.page-turn-effect { 
+  transition-duration: 1.0s !important; 
+}
+
+@keyframes openLeftPageAnim { 
+  0% { transform: perspective(1000px) rotateY(120deg); opacity: 0; } 
+  100% { transform: perspective(1000px) rotateY(0deg); opacity: 1; } 
+}
+.intro-animation-left { 
+  transform-origin: 120% 50%; 
+  animation-name: openLeftPageAnim; 
+  animation-fill-mode: both; 
+  animation-timing-function: ease-out; 
+}
+
+#videoContainer1, #videoContainer2, #text1, #text2 { animation-duration: 1.0s !important; animation-delay: 0s !important; }
+#videoContainer7, #videoContainer8, #text7, #text8 { animation-duration: 1.0s !important; animation-delay: 0s !important; }
+
+/* SAYFA 3 SOL TARAF ÖZEL ZAMANLAMASI */
+#videoContainer13, #videoContainer15, #text13, #text15 { animation-duration: 0.5s !important; animation-delay: 0s !important; }
+
+.fade-out-now { opacity: 0 !important; } 
+
+/* =========================================
+   🎬 PERFORMANS ODAKLI SİNEMA MODU
+   ========================================= */
+#cinemaOverlay {
+  position: fixed; inset: 0; width: 100vw; height: 100vh;
+  background: rgba(0, 0, 0, 0.7);
+  z-index: 40000; display: none;
+}
+/* Siyah Filtre Üzerinde Yazıları Göstermek İçin Katman */
+#cinemaTextWrapper {
+  position: absolute; inset: 0; pointer-events: none; z-index: 40005;
+}
+
+/* SİNEMA MODUNDAYKEN METNİ BEYAZ YAPAN KURAL */
+#cinemaTextWrapper .text-box {
+  color: #ffffff !important;
+  text-shadow: 2px 2px 5px rgba(0, 0, 0, 0.9) !important;
+}
+
+#cinemaVideoContainer {
+  position: absolute; 
+  box-sizing: border-box;
+  border: 6px solid #ffffff; 
+  box-shadow: 0 15px 35px rgba(0,0,0,0.9);
+  background: black;
+  transform: translateZ(0); 
+  z-index: 40002;
+}
+#cinemaVideo { 
+  width: 100%; height: 100%; object-fit: cover; display: block;
+}
+#closeCinemaBtn {
+  position: absolute; top: -20px; right: -20px; 
+  color: white; font-size: 20px; font-weight: bold; cursor: pointer;
+  background: #ff3333; width: 40px; height: 40px; border-radius: 50%; 
+  border: 2px solid white; display: flex; align-items: center; justify-content: center; 
+  z-index: 40001; transition: transform 0.2s;
+}
+#closeCinemaBtn:hover { transform: scale(1.1); background: #ff0000; }
+</style>
+</head>
+
+<body>
+
+<div id="fadeToBlack"></div>
+
+<audio id="bgMusic" src="muzik.mp3" loop preload="auto"></audio>
+
+<div id="cinemaOverlay">
+    <div id="cinemaTextWrapper"></div>
+    <div id="cinemaVideoContainer">
+        <div id="closeCinemaBtn" onclick="closeCinema()">✖</div>
+        <video id="cinemaVideo" controls playsinline></video>
+    </div>
+</div>
+
+<div id="coverPage">
+  <img id="coverImage" src="kapak.jpg" alt="Kapak Görseli">
+  <div id="startTrigger"></div>
+</div>
+
+<div id="nextBtn" class="control-btn" onclick="handleNextPage()">&#10140;</div>
+
+<div id="mainScene" class="scene">
+  
+  <video id="video1" class="bg-video" src="video1.mp4" muted playsinline preload="auto"></video>
+  <video id="video3" class="bg-video" src="video3.mp4" muted playsinline preload="auto"></video>
+  <video id="video11" class="bg-video" src="video11.mp4" muted playsinline preload="auto"></video>
+
+  <div id="toggleTrigger"></div> 
+  <div id="rightTrigger"></div>  
+  
+  <div class="overlay" id="mainOverlay">
+    
+    <div id="videoContainer1" class="frame-style pos-left-top" data-src="video2.mp4" data-poster="resim1.jpg" style="background-image: url('resim1.jpg'); background-size: cover; background-position: center;" onclick="openCinema(this, event)"><div class="video-cover"><div class="lock-icon">🔒</div></div></div>
+    <div id="text1" class="text-box text-left-top">
+        <div class="title-container"><b>Galata'da Bir Gece</b></div>
+        <span id="t1_c1">Kitabın hikâyesi, 17. yüzyılın sonlarında Kostantiniye’de, Galata Kulesi’ndeki yangın gözcülerinin bir gece limana Arap İhsan’ın kadırgasının girdiğini görmesiyle başlar.</span>
+        <span id="t1_c2">Arap İhsan, denizlerde korsanlık yapmış, sert bir külhanidir.</span>
+        <span id="t1_c3">Yanında esir aldığı haylaz Alibaz adında bir çocuk ve ganimet dolu sandıklarla yeğeni Uzun İhsan Efendi’nin evine gelir.</span>
+    </div>
+    
+    <div id="videoContainer2" class="frame-style pos-left-bottom" data-src="video4.mp4" data-poster="resim2.jpg" style="background-image: url('resim2.jpg'); background-size: cover; background-position: center;" onclick="openCinema(this, event)"><div class="video-cover"><div class="lock-icon">🔒</div></div></div>
+    <div id="text2" class="text-box text-left-bottom">
+        <div class="title-container"><b>Kurşun Geçirmez Kitap</b></div>
+        <span id="t2_c1">Arap İhsan, Uzun İhsan Efendi’nin evine yerleştikten sonra başından geçen deniz savaşlarını anlatır ve hayatını kurtaran esrarengiz bir nesneden bahseder.</span>
+        <span id="t2_c2">Bu nesne, bir çatışma esnasında göğsüne isabet eden kurşunu durdurmayı başarmış, üzerinde mermi deliği bulunan ve Frenkçe yazılmış kalın bir kitaptır.</span>
+        <span id="t2_c3">Evdekiler bu eseri inceleseler de dilini bilmedikleri için okuyamazlar ve kitabın içeriğini öğrenebilmek adına metni çevirebilecek birini aramaya karar verirler.</span>
+    </div>
+
+    <div id="videoContainer3" class="frame-style pos-right-top" data-src="video5.mp4" data-poster="resim3.jpg" style="background-image: url('resim3.jpg'); background-size: cover; background-position: center;" onclick="openCinema(this, event)"><div class="video-cover"><div class="lock-icon">🔒</div></div></div>
+    <div id="text3" class="text-box text-right-top">
+        <div class="title-container"><b>Dişçi Kubelik'in Sırrı</b></div>
+        <span id="t3_c1">Arap İhsan, sefere çıkmadan önce hayatını kurtardığını düşündüğü, üzerinde kurşun deliği olan bir Frenk kitabını tercüme etmesi için cerrah ve dişçi olan Kubelik’e teslim eder.</span>
+        <span id="t3_c2">Kubelik, aslında sahte dişçilikten cerrahlığa geçmiş, ölüleri kesip biçerek anatomi üzerine çalışan biridir.</span>
+        <span id="t3_c3">Bu süreçte İhsan Efendi, Kubelik’in getirdiği bu metinleri okuyunca şüpheyi bir yöntem olarak benimser.</span>
+    </div>
+    
+    <div id="videoContainer4" class="frame-style pos-right-bottom" data-src="video6.mp4" data-poster="resim4.jpg" style="background-image: url('resim4.jpg'); background-size: cover; background-position: center;" onclick="openCinema(this, event)"><div class="video-cover"><div class="lock-icon">🔒</div></div></div>
+    <div id="text4" class="text-box text-right-bottom">
+        <div class="title-container"><b>Mezardaki Uyanış</b></div>
+        <span id="t4_c1">Bünyamin, babasının gizemli hayatını ve geçim kaynağını merak ederken, bir gün babasının hazırladığı yeşil uyku şurubundan içerek derin bir uykuya dalar.</span>
+        <span id="t4_c2">Rüyasında kendisini diri diri gömülmüş olarak görür.</span>
+        <span id="t4_c3">Gerçek hayatta da şerbetin etkisiyle öldü sanılan Bünyamin tabuta konulur ve gömülür; ancak rüyasındaki "güven dolu bir sesin" yardımıyla mezardan canlı çıkmayı başarır.</span>
+    </div>
+
+    <div id="videoContainer7" class="frame-style pos-left-top" data-src="video7.mp4" data-poster="resim5.jpg" style="background-image: url('resim5.jpg'); background-size: cover; background-position: center;" onclick="openCinema(this, event)"><div class="video-cover"><div class="lock-icon">🔒</div></div></div>
+    <div id="text7" class="text-box text-left-top">
+        <div class="title-container"><b>Lağımcılar ve Ordu</b></div>
+        <span id="t7_c1">Mezardan mucizevi bir şekilde sağ çıkmayı başaran Bünyamin, İstanbul'a döndüğünde adının hortlağa çıktığını görür ve büyük bir dışlanma yaşar.</span>
+        <span id="t7_c2">Bu sırada Vardapet adındaki yetenekli bir zangoç onu bularak, babası Uzun İhsan Efendi'nin izniyle yeraltı dünyasının karanlık sırlarını öğretmeyi teklif eder.</span>
+        <span id="t7_c3">Bünyamin, Osmanlı ordusunun zorlu bir seferine lağımcı çırağı olarak katılır ve savaşın yeraltındaki acımasız yüzüyle yüzleşmek zorunda kalır.</span>
+    </div>
+    
+    <div id="videoContainer8" class="frame-style pos-left-bottom" data-src="video8.mp4" data-poster="resim6.jpg" style="background-image: url('resim6.jpg'); background-size: cover; background-position: center;" onclick="openCinema(this, event)"><div class="video-cover"><div class="lock-icon">🔒</div></div></div>
+    <div id="text8" class="text-box text-left-bottom">
+        <div class="title-container"><b>Siyah Para ve Kaza</b></div>
+        <span id="t8_c1">Kuşatma esnasında, düşman kalesinin derinliklerinde tutsak edilen Zülfiyar adındaki önemli bir casusu kurtarmak için son derece tehlikeli bir lağım operasyonu başlatılır.</span>
+        <span id="t8_c2">Tam hedefe ulaştıklarında karşı lağımcılarla yaşanan kanlı çatışmada Vardapet şehit düşerken, casus Zülfiyar üzerinde hiçbir yazı bulunmayan gizemli ve siyah bir parayı Bünyamin'e emanet eder.</span>
+        <span id="t8_c3">Şiddetli kargaşa sırasında Bünyamin'in yüzüne yapışan örme zırh hızla çekilince, genç adamın yüzü feci şekilde parçalanır ve tamamen tanınmaz bir hale gelir.</span>
+    </div>
+    
+    <div id="videoContainer9" class="frame-style pos-right-top" data-src="video9.mp4" data-poster="resim7.jpg" style="background-image: url('resim7.jpg'); background-size: cover; background-position: center;" onclick="openCinema(this, event)"><div class="video-cover"><div class="lock-icon">🔒</div></div></div>
+    <div id="text9" class="text-box text-right-top">
+        <div class="title-container"><b>Dilenciler Loncası</b></div>
+        <span id="t9_c1">Yüzü parçalanmış ve hafızasını kaybetmiş numarası yaparak İstanbul'a dönen Bünyamin, evlerinin yeniçeriler tarafından yerle bir edildiğini görür.</span>
+        <span id="t9_c2">Çok geçmeden, babası Uzun İhsan Efendi'nin sakladığı büyük bir sırrı vermediği için acımasızca kör edilip Hınzıryedi'ye satıldığını öğrenir.</span>
+        <span id="t9_c3">Babasını kurtarmaya yemin eden Bünyamin, bu tehlikeli adamın güvenini kazanmak ve yeraltı dünyasının sırlarına ulaşmak için İstanbul'un karanlık dilenciler loncasının arasına karışır.</span>
+    </div>
+    
+    <div id="videoContainer10" class="frame-style pos-right-bottom" data-src="video10.mp4" data-poster="resim8.jpg" style="background-image: url('resim8.jpg'); background-size: cover; background-position: center;" onclick="openCinema(this, event)"><div class="video-cover"><div class="lock-icon">🔒</div></div></div>
+    <div id="text10" class="text-box text-right-bottom">
+        <div class="title-container"><b>Ebrehe'nin Teşkilatı</b></div>
+        <span id="t10_c1">Dilenciler loncasının ardında, eski bir hırsız olan Hınzıryedi ile işbirliği yapan ve büyük bir casus teşkilatını yöneten Ebrehe bulunmaktadır.</span>
+        <span id="t10_c2">Kılık değiştiren Bünyamin, elindeki Puslu Kıtalar Atlası'nın rehberliğinde Ebrehe'nin ölümcül yeraltı teşkilatına sızarak hiyerarşide hızla yükselmeyi başarır.</span>
+        <span id="t10_c3">Ebrehe, Kehanet Aynası'nda gördüğü kıyameti durduracak ve zamanı geriye akıtacak makineyi çalıştırmak için, Bünyamin'in cebinde taşıdığı siyah parayı delice aramaktadır.</span>
+    </div>
+
+    <div id="videoContainer13" class="frame-style pos-left-top" data-src="video13.mp4" data-poster="resim9.jpg" style="background-image: url('resim9.jpg'); background-size: cover; background-position: center;" onclick="openCinema(this, event)"><div class="video-cover"><div class="lock-icon">🔒</div></div></div>
+    <div id="text13" class="text-box text-left-top">
+        <div class="title-container"><b>Aglaya ve Şüphe</b></div>
+        <span id="t13_c1">Bünyamin, Teşkilat’ın labirentlerinde sırları çözerken; babası Uzun İhsan Efendi’nin bizzat Ebrehe tarafından karanlık bir zindanda esir tutulduğunu dehşetle fark eder. Bu cehennemden kurtulmak için,</span>
+        <span id="t13_c2">Ebrehe’nin kölesi olan zeki ve cesur Aglaya ile tutkulu bir bağ kurarak "Kıyamet Makinesi"ni sabote edecek tehlikeli bir kaçış planı hazırlarlar.</span>
+        <span id="t13_c3">Ancak Ebrehe, zamanı büken makinesini çalıştırmak için eksik olan o tek parçanın, yani "Siyah Para"nın, Bünyamin’in göğsünde saklı olduğunu korkunç bir yüzleşmeyle anlar.</span>
+    </div>
+    
+    <div id="videoContainer15" class="frame-style pos-left-bottom" data-src="video15.mp4" data-poster="resim10.jpg" style="background-image: url('resim10.jpg'); background-size: cover; background-position: center;" onclick="openCinema(this, event)"><div class="video-cover"><div class="lock-icon">🔒</div></div></div>
+    <div id="text15" class="text-box text-left-bottom">
+        <div class="title-container"><b>Büyük İhanet</b></div>
+        <span id="t15_c1">Kehanet aynasının ve saat sistemlerinin bulunduğu odada; Ebrehe, Bünyamin'i köşeye sıkıştırıp ona dünyanın sadece bir rüyadan ibaret olduğunu anlattığı sırada, hiç beklenmedik ve devasa bir saldırı gerçekleşir.</span>
+        <span id="t15_c2">Dilenciler kethüdası Hınzıryedi, Ebrehe'ye ihanet ederek topladığı büyük dilenciler ordusuyla birlikte casus teşkilatının yeraltı karargahını kanlı bir şekilde basar.</span>
+        <span id="t15_c3">Yaşanan bu şiddetli ve acımasız çatışma sonucunda, Ebrehe’nin yıllarca ilmek ilmek kurguladığı o yenilmez ve karanlık dünya tamamen yerle bir olur.</span>
+    </div>
+    
+    <div id="videoContainer14" class="frame-style pos-right-top" data-src="video14.mp4" data-poster="resim11.jpg" style="background-image: url('resim11.jpg'); background-size: cover; background-position: center;" onclick="openCinema(this, event)"><div class="video-cover"><div class="lock-icon">🔒</div></div></div>
+    <div id="text14" class="text-box text-right-top">
+        <div class="title-container"><b>Babaya Kavuşma</b></div>
+        <span id="t14_c1">Teşkilatın çöküşü ve tünelleri saran bu ölümcül kaosun ortasında Bünyamin, esir tutulan babası Uzun İhsan Efendi'nin izini bulmayı başarır.</span>
+        <span id="t14_c2">Galata'nın karanlık yeraltı dehlizlerinde yaşanan nefes kesici bir kovalamacanın ardından babasını o kanlı yıkıntıların arasından sağ salim çıkarmayı hedefler.</span>
+        <span id="t14_c3">Büyük çabalar sonucunda babasını rıhtıma kadar ulaştıran Bünyamin, onu güvenli bir gemiye bindirerek bu büyük kabustan sonsuza dek uzaklaşmasını sağlar.</span>
+    </div>
+    
+    <div id="videoContainer16" class="frame-style pos-right-bottom" data-src="video16.mp4" data-poster="resim12.jpg" style="background-image: url('resim12.jpg'); background-size: cover; background-position: center;" onclick="openCinema(this, event)"><div class="video-cover"><div class="lock-icon">🔒</div></div></div>
+    <div id="text16" class="text-box text-right-bottom">
+        <div class="title-container"><b>Atlasın Sırrı</b></div>
+        <span id="t16_c1">Babasını yolcu ettikten sonra ona emanet edilen atlasın son sayfalarını okuyan Bünyamin, tüm hayatını sorgulatacak sarsıcı ve akıl almaz bir gerçekle yüzleşir.</span>
+        <span id="t16_c2">Uzun İhsan Efendi aslında yaşanan tüm bu acıları ve olayları rüyasında önceden yazmıştır; koskoca dünya sadece onun zihnindeki kurgusal bir düştür.</span>
+        <span id="t16_c3">Babası rüyasının içinde kaybolurken, Bünyamin dünyanın sadece bir şahidi olduğunu anlayarak Aglaya ile birlikte Kostantiniye'nin sisli sokaklarında yeni bir hayata adım atar.</span>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// =========================================================================
+// 🎥 VİDEO VE METİN EŞLEŞTİRME MOTORU
+// =========================================================================
+const videoToTextMap = {
+    'video2.mp4': ['t1_c1', 't1_c2', 't1_c3'],
+    'video4.mp4': ['t2_c1', 't2_c2', 't2_c3'],
+    'video5.mp4': ['t3_c1', 't3_c2', 't3_c3'],
+    'video6.mp4': ['t4_c1', 't4_c2', 't4_c3'],
+    'video7.mp4': ['t7_c1', 't7_c2', 't7_c3'],
+    'video8.mp4': ['t8_c1', 't8_c2', 't8_c3'],
+    'video9.mp4': ['t9_c1', 't9_c2', 't9_c3'],
+    'video10.mp4': ['t10_c1', 't10_c2', 't10_c3'],
+    'video13.mp4': ['t13_c1', 't13_c2', 't13_c3'],
+    'video15.mp4': ['t15_c1', 't15_c2', 't15_c3'],
+    'video14.mp4': ['t14_c1', 't14_c2', 't14_c3'],
+    'video16.mp4': ['t16_c1', 't16_c2', 't16_c3']
+};
+
+const exactVideoTimings = {
+    'video2.mp4': [0.04, 0.43, 1.43, 2.02, 2.6, 3.48, 4.52, 5.11, 5.62, 6.14, 7.02, 7.3, 7.59, 8.21, 8.59, 8.97, 9.42, 9.93, 10.37, 11.32, 11.59, 12.2, 12.69, 13.28, 13.95, 14.47, 14.98, 16.24, 17.02, 17.69, 18.14, 18.76, 19.22, 19.72, 20.26, 20.87, 21.23, 21.64, 22.03, 22.54, 23.1, 23.54, 24.07, 24.48],
+    'video4.mp4': [],
+    'video5.mp4': [0.03, 0.25, 1.22, 1.68, 2.08, 2.65, 3.08, 3.73, 4.84, 5.9, 6.46, 6.89, 7.35, 7.76, 8.13, 8.45, 8.91, 9.26, 9.82, 10.53, 11.04, 11.37, 11.84, 12.53, 13.04, 13.91, 14.87, 15.48, 15.85, 16.46, 17.01, 18.13, 18.54, 19.09, 19.7, 20.13, 20.44, 20.98, 21.98, 22.48, 22.92, 23.27, 23.83, 24.21, 24.76, 25.24, 25.58, 26.07, 26.92, 27.34, 27.9],
+    'video6.mp4': [], 'video7.mp4': [], 'video8.mp4': [], 
+    'video9.mp4': [], 'video10.mp4': [], 'video13.mp4': [], 'video15.mp4': [], 'video14.mp4': [], 'video16.mp4': []
+};
+
+document.addEventListener("DOMContentLoaded", () => {
+    Object.values(videoToTextMap).forEach(ids => {
+        ids.forEach(id => {
+            const el = document.getElementById(id);
+            if (el && !el.dataset.wrapped) {
+                const words = el.innerText.trim().split(/\s+/);
+                el.innerHTML = words.map(w => `<span class="single-word">${w}</span>`).join(' ');
+                el.dataset.wrapped = "true";
+            }
+        });
+    });
+});
+
+// =========================================================================
+// OYUN ANA MANTIĞI VE PERFORMANS ODAKLI BÖLGESEL SİNEMA
+// =========================================================================
+const coverPage = document.getElementById("coverPage");
+const startTrigger = document.getElementById("startTrigger");
+const scene = document.getElementById("mainScene");
+const cinemaOverlay = document.getElementById("cinemaOverlay");
+const cinemaVideoContainer = document.getElementById("cinemaVideoContainer");
+const cinemaVideo = document.getElementById("cinemaVideo");
+const bgVideos = [
+  document.getElementById("video1"), document.getElementById("video3"),
+  document.getElementById("video11")
+];
+const bgMusic = document.getElementById("bgMusic");
+const toggleTrigger = document.getElementById("toggleTrigger"); 
+const rightTrigger = document.getElementById("rightTrigger");   
+const nextBtn = document.getElementById("nextBtn");
+
+let timeTriggered = false; 
+let glowTriggered = false; 
+let isZoomedLeft = false;
+let isZoomedRight = false;
+let currentPage = 1; 
+let isZooming = false; 
+let pendingCinemaContainer = null; 
+let currentWordTimings = [];
+
+function resetGlows() {
+    document.querySelectorAll('.word-glow').forEach(el => el.classList.remove('word-glow'));
+}
+
+function syncWordsWithVideo() {
+    const currentTime = cinemaVideo.currentTime;
+    currentWordTimings.forEach(timing => {
+        if (currentTime >= timing.start && currentTime < timing.end) {
+            timing.el.classList.add('word-glow');
+        } else {
+            timing.el.classList.remove('word-glow');
+        }
+    });
+}
+
+function openCinema(container, event) {
+    if (event) { event.stopPropagation(); event.stopImmediatePropagation(); }
+    
+    if (isZooming) {
+        pendingCinemaContainer = container;
+        return; 
+    }
+    
+    if (!isZoomedLeft && !isZoomedRight) {
+        pendingCinemaContainer = container; 
+        if (container.classList.contains('pos-left-top') || container.classList.contains('pos-left-bottom')) {
+            toggleTrigger.click();
+        } else if (container.classList.contains('pos-right-top') || container.classList.contains('pos-right-bottom')) {
+            rightTrigger.click();
+        }
+        return; 
+    }
+    
+    resetGlows();
+    const src = container.getAttribute('data-src');
+    const poster = container.getAttribute('data-poster'); 
+    
+    bgVideos.forEach(v => { if (v && !v.ended && !v.paused) { v.pause(); } });
+    bgMusic.volume = 0.2; 
+
+    document.querySelectorAll('.active-glow').forEach(el => el.style.animation = "none");
+
+    const wrapper = document.getElementById('cinemaTextWrapper');
+    wrapper.style.transformOrigin = scene.style.transformOrigin || "50% 40%";
+    wrapper.style.transform = scene.classList.contains('zoom-active') ? 'scale(2.0)' : 'none';
+    
+    const textIds = videoToTextMap[src];
+    let activeTextBox = null;
+    if(textIds && textIds.length > 0) {
+        const firstSpan = document.getElementById(textIds[0]);
+        if(firstSpan) activeTextBox = firstSpan.closest('.text-box');
+    }
+    if (activeTextBox) {
+        activeTextBox.style.animation = "none";
+        activeTextBox.style.opacity = "1";
+        activeTextBox.style.transform = "perspective(1000px) rotateY(0deg)";
+        wrapper.appendChild(activeTextBox);
+    }
+
+    const rect = container.getBoundingClientRect();
+    cinemaVideoContainer.style.left = rect.left + "px";
+    cinemaVideoContainer.style.top = rect.top + "px";
+    cinemaVideoContainer.style.width = rect.width + "px";
+    cinemaVideoContainer.style.height = rect.height + "px";
+    
+    cinemaOverlay.style.display = "block";
+    cinemaVideo.src = src;
+    if(poster) cinemaVideo.poster = poster; 
+    cinemaVideo.muted = false; 
+    
+    const spans = [];
+    if(textIds) {
+        textIds.forEach(id => {
+            const el = document.getElementById(id);
+            if(el) spans.push(...el.querySelectorAll('.single-word'));
+        });
+    }
+
+    cinemaVideo.onloadedmetadata = () => {
+        const duration = cinemaVideo.duration;
+        const timings = exactVideoTimings[src];
+        
+        if (timings && timings.length > 0) {
+            currentWordTimings = spans.map((span, index) => {
+                let start = timings[index] !== undefined ? timings[index] : (timings[timings.length - 1] || 0);
+                let end = timings[index + 1] !== undefined ? timings[index + 1] : (duration || 999);
+                return { el: span, start, end };
+            });
+        } else {
+            let elapsed = 0;
+            const totalWeight = spans.reduce((acc, s) => acc + (s.innerText.length + 2), 0);
+            currentWordTimings = spans.map(span => {
+                const weight = span.innerText.length + 2;
+                const part = (weight / totalWeight) * duration;
+                const start = elapsed;
+                const end = elapsed + part;
+                elapsed = end;
+                return { el: span, start, end };
+            });
+        }
+    };
+
+    cinemaVideo.ontimeupdate = syncWordsWithVideo;
+    cinemaVideo.play().catch(e => console.log("Hata:", e));
+}
+
+cinemaVideo.onended = () => {
+    if (cinemaVideo.src.includes('video16.mp4')) {
+        triggerFinalReset();
+    } else {
+        closeCinema();
+    }
+};
+
+function triggerFinalReset() {
+    const fadeDiv = document.getElementById("fadeToBlack");
+    fadeDiv.classList.add("fade-active");
+
+    setTimeout(() => {
+        closeCinema();
+        
+        bgMusic.pause();
+        bgMusic.currentTime = 0;
+        
+        bgVideos.forEach(v => {
+            v.pause();
+            v.currentTime = 0;
+            v.style.opacity = "0"; 
+        });
+
+        const allBoxes = document.querySelectorAll('.frame-style, .text-box');
+        allBoxes.forEach(el => {
+            el.classList.remove("show-content", "z-high", "reveal", "intro-animation-left", "persist-on-top", "fade-out-now", "page-turn-effect", "unlocked");
+            el.style.opacity = 0;
+            el.style.animation = "";
+            el.style.transform = "";
+        });
+
+        currentPage = 1;
+        timeTriggered = false;
+        glowTriggered = false;
+        isZoomedLeft = false;
+        isZoomedRight = false;
+        isZooming = false;
+        
+        scene.classList.remove("zoom-active");
+        scene.style.transformOrigin = "50% 40%";
+        
+        nextBtn.classList.remove("show-btn", "active-glow");
+        toggleTrigger.classList.remove("active-glow");
+        rightTrigger.classList.remove("active-glow");
+
+        coverPage.style.display = "block";
+        setTimeout(() => { coverPage.style.opacity = 1; }, 50);
+        
+        document.getElementById("video1").style.opacity = "1";
+
+        setTimeout(() => {
+            fadeDiv.classList.remove("fade-active");
+        }, 500);
+
+    }, 1500); 
+}
+
+function closeCinema() {
+    cinemaOverlay.style.display = "none";
+    cinemaVideo.pause();
+    cinemaVideo.removeAttribute('src'); 
+    cinemaVideo.removeAttribute('poster'); 
+    cinemaVideo.load();
+    resetGlows();
+    
+    const wrapper = document.getElementById('cinemaTextWrapper');
+    const overlayContainer = document.getElementById('mainOverlay');
+    while (wrapper.firstChild) {
+        let child = wrapper.firstChild;
+        overlayContainer.appendChild(child);
+    }
+
+    document.querySelectorAll('.active-glow').forEach(el => el.style.animation = "");
+    bgMusic.volume = 1.0;
+    
+    let currentBgVid;
+    if(currentPage === 1) currentBgVid = document.getElementById("video1");
+    if(currentPage === 2) currentBgVid = document.getElementById("video3");
+    if(currentPage === 3) currentBgVid = document.getElementById("video11");
+    
+    if (currentBgVid && !currentBgVid.ended) { currentBgVid.play().catch(e=>e); }
+}
+
+startTrigger.addEventListener("click", () => {
+  coverPage.style.opacity = 0;
+  document.getElementById("video1").play().catch(e => console.log(e));
+  bgMusic.volume = 1.0; 
+  bgMusic.play().catch(e => console.log(e));
+  setTimeout(() => { coverPage.style.display = "none"; }, 1000);
+});
+
+document.getElementById("video1").ontimeupdate = () => {
+  if (document.getElementById("video1").currentTime >= 0.50 && !timeTriggered) {
+    document.getElementById("videoContainer1").classList.add("show-content", "intro-animation-left");
+    document.getElementById("text1").classList.add("show-content", "intro-animation-left");
+    document.getElementById("videoContainer2").classList.add("show-content", "intro-animation-left");
+    document.getElementById("text2").classList.add("show-content", "intro-animation-left");
+    document.getElementById("videoContainer3").classList.add("show-content", "reveal");
+    document.getElementById("text3").classList.add("show-content", "reveal");
+    document.getElementById("videoContainer4").classList.add("show-content", "reveal");
+    document.getElementById("text4").classList.add("show-content", "reveal");
+    nextBtn.classList.add("show-btn");
+    timeTriggered = true; 
+  }
+  if (document.getElementById("video1").currentTime >= 1.5 && !glowTriggered) {
+    toggleTrigger.classList.add("active-glow");
+    glowTriggered = true;
+  }
+};
+
+function finishZooming() {
+    isZooming = false;
+    if (pendingCinemaContainer) {
+        let target = pendingCinemaContainer;
+        pendingCinemaContainer = null;
+        openCinema(target, null);
+    }
+}
+
+function handleZoomOut() {
+    scene.classList.remove("zoom-active");
+    if (currentPage < 3) nextBtn.classList.add("show-btn"); 
+    resetGlows();
+    isZooming = true; 
+    pendingCinemaContainer = null; 
+    setTimeout(finishZooming, 1500); 
+}
+
+toggleTrigger.addEventListener("click", () => {
+  if (isZooming) return; 
+
+  toggleTrigger.classList.remove("active-glow"); 
+  rightTrigger.classList.add("active-glow");     
+  if (isZoomedLeft) {
+    handleZoomOut();
+    isZoomedLeft = false;
+  } else {
+    if(isZoomedRight) { handleZoomOut(); isZoomedRight = false; }
+    scene.style.transformOrigin = "0% 40%";
+    scene.classList.add("zoom-active");
+    nextBtn.classList.remove("show-btn"); 
+    isZoomedLeft = true;
+    isZooming = true; 
+    setTimeout(finishZooming, 1500); 
+  }
+});
+
+rightTrigger.addEventListener("click", () => {
+  if (isZooming) return; 
+
+  rightTrigger.classList.remove("active-glow"); 
+  nextBtn.classList.add("active-glow");         
+  if (isZoomedRight) {
+    handleZoomOut();
+    isZoomedRight = false;
+  } else {
+    if(isZoomedLeft) { handleZoomOut(); isZoomedLeft = false; }
+    scene.style.transformOrigin = "95% 40%";
+    scene.classList.add("zoom-active");
+    nextBtn.classList.remove("show-btn"); 
+    isZoomedRight = true;
+    isZooming = true; 
+    setTimeout(finishZooming, 1500); 
+  }
+});
+
+function handleNextPage() {
+  resetGlows();
+  if (currentPage === 1) goToPage2();
+  else if (currentPage === 2) goToPage3();
+}
+
+// =========================================================================
+// ZAMANLAMALAR VE SAYFA GEÇİŞLERİ
+// =========================================================================
+
+function goToPage2() {
+  nextBtn.classList.remove("active-glow", "show-btn"); 
+  toggleTrigger.classList.remove("active-glow"); 
+  rightTrigger.classList.remove("active-glow");
+  
+  let v3 = document.getElementById("video3");
+  v3.style.opacity = "1"; 
+  v3.muted = false; 
+  v3.play().catch(e => console.log(e));
+  
+  scene.classList.add("scene-on-top"); 
+  document.getElementById("video1").classList.add("hide-book-bg");
+  
+  const page1Items = [
+    document.getElementById("videoContainer1"), document.getElementById("videoContainer2"),
+    document.getElementById("videoContainer3"), document.getElementById("videoContainer4"),
+    document.getElementById("text1"), document.getElementById("text2"), document.getElementById("text3"), document.getElementById("text4")
+  ];
+  page1Items.forEach(el => el.classList.add("persist-on-top"));
+
+  document.getElementById("videoContainer3").classList.add("page-turn-effect"); 
+  document.getElementById("text3").classList.add("page-turn-effect"); 
+  document.getElementById("videoContainer4").classList.add("page-turn-effect"); 
+  document.getElementById("text4").classList.add("page-turn-effect"); 
+
+  setTimeout(() => { 
+    document.getElementById("videoContainer1").classList.add("fade-out-now"); 
+    document.getElementById("videoContainer2").classList.add("fade-out-now"); 
+    document.getElementById("text1").classList.add("fade-out-now");
+    document.getElementById("text2").classList.add("fade-out-now");
+  }, 1000); 
+
+  setTimeout(() => {
+    currentPage = 2;
+    document.getElementById("video1").pause();
+    
+    scene.classList.remove("scene-on-top"); 
+    document.getElementById("video1").classList.remove("hide-book-bg");
+    document.getElementById("video1").style.opacity = "0";
+
+    page1Items.forEach(el => {
+        el.classList.remove("persist-on-top", "fade-out-now", "page-turn-effect", "show-content", "reveal", "intro-animation-left");
+        el.style.opacity = 0; if(el.id.includes("Container")) el.classList.remove("unlocked");
+    });
+    
+    scene.classList.remove("zoom-active"); isZoomedLeft = false; isZoomedRight = false;
+
+    document.getElementById("videoContainer7").classList.add("show-content", "z-high", "intro-animation-left");
+    document.getElementById("text7").classList.add("show-content", "z-high", "intro-animation-left");
+    document.getElementById("videoContainer8").classList.add("show-content", "z-high", "intro-animation-left");
+    document.getElementById("text8").classList.add("show-content", "z-high", "intro-animation-left");
+    document.getElementById("videoContainer9").classList.add("show-content", "z-high", "reveal");
+    document.getElementById("text9").classList.add("show-content", "z-high", "reveal");
+    document.getElementById("videoContainer10").classList.add("show-content", "z-high", "reveal");
+    document.getElementById("text10").classList.add("show-content", "z-high", "reveal");
+    
+    nextBtn.classList.add("show-btn"); 
+    toggleTrigger.classList.add("active-glow");
+  }, 1000); 
+}
+
+// 🔥 GÜNCELLENDİ: SAYFA 3 GEÇİŞİ ZAMANLAMALARI KOORDİNE EDİLDİ 🔥
+function goToPage3() {
+  nextBtn.classList.remove("active-glow", "show-btn"); 
+  toggleTrigger.classList.remove("active-glow"); 
+  rightTrigger.classList.remove("active-glow");
+
+  let v11 = document.getElementById("video11");
+  v11.style.opacity = "1"; 
+  v11.muted = false; 
+  v11.play().catch(e => console.log(e));
+  
+  const page2Items = [
+    document.getElementById("videoContainer7"), document.getElementById("videoContainer8"),
+    document.getElementById("videoContainer9"), document.getElementById("videoContainer10"),
+    document.getElementById("text7"), document.getElementById("text8"), document.getElementById("text9"), document.getElementById("text10")
+  ];
+  page2Items.forEach(el => el.classList.add("persist-on-top"));
+
+  // Sağ sayfa dönmeye başlar (Süre 1.0 saniye olarak ayarlandı)
+  document.getElementById("videoContainer9").classList.add("page-turn-effect"); 
+  document.getElementById("text9").classList.add("page-turn-effect"); 
+  document.getElementById("videoContainer10").classList.add("page-turn-effect"); 
+  document.getElementById("text10").classList.add("page-turn-effect"); 
+
+  // 🔥 Başlama zamanı biraz daha geriye alındı: Sayfa tam kapanmadan (750ms'de) sol taraf kaybolur.
+  setTimeout(() => { 
+    document.getElementById("videoContainer7").classList.add("fade-out-now"); 
+    document.getElementById("videoContainer8").classList.add("fade-out-now"); 
+    document.getElementById("text7").classList.add("fade-out-now");
+    document.getElementById("text8").classList.add("fade-out-now");
+  }, 750);
+
+  // 🔥 3. Sayfa tam kapanmaya yakınken (750ms'de) görünür hale gelir.
+  setTimeout(() => {
+    currentPage = 3;
+    document.getElementById("video3").pause();
+    
+    page2Items.forEach(el => {
+        el.classList.remove("persist-on-top", "fade-out-now", "page-turn-effect", "show-content", "reveal", "z-high", "intro-animation-left");
+        el.style.opacity = 0; if(el.id.includes("Container")) el.classList.remove("unlocked");
+    });
+    
+    document.getElementById("video3").style.opacity = "0"; 
+    scene.classList.remove("zoom-active"); isZoomedLeft = false; isZoomedRight = false;
+
+    document.getElementById("videoContainer13").classList.add("show-content", "z-high", "intro-animation-left");
+    document.getElementById("text13").classList.add("show-content", "z-high", "intro-animation-left");
+    document.getElementById("videoContainer15").classList.add("show-content", "z-high", "intro-animation-left");
+    document.getElementById("text15").classList.add("show-content", "z-high", "intro-animation-left");
+    document.getElementById("videoContainer14").classList.add("show-content", "z-high", "reveal");
+    document.getElementById("text14").classList.add("show-content", "z-high", "reveal");
+    document.getElementById("videoContainer16").classList.add("show-content", "z-high", "reveal");
+    document.getElementById("text16").classList.add("show-content", "z-high", "reveal");
+    
+    toggleTrigger.classList.add("active-glow");
+  }, 750); 
+}
+</script>
+
+</body>
+</html>
